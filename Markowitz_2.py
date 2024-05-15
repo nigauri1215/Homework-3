@@ -74,6 +74,9 @@ class MyPortfolio:
         """
         TODO: Complete Task 4 Below
         """
+        for i in range(self.lookback + 1, len(self.price)):
+            R_n = self.returns.copy()[assets].iloc[i - self.lookback : i]
+            self.portfolio_weights.loc[self.price.index[i], assets] = self.mv_opt(R_n, self.gamma)
 
         """
         TODO: Complete Task 4 Above
@@ -81,6 +84,36 @@ class MyPortfolio:
 
         self.portfolio_weights.ffill(inplace=True)
         self.portfolio_weights.fillna(0, inplace=True)
+        
+    def mv_opt(self, R_n, gamma):
+        Sigma = R_n.cov().values
+        mu = R_n.mean().values
+        n = len(R_n.columns)
+
+        with gp.Env(empty=True) as env:
+            env.setParam("OutputFlag", 0)
+            env.setParam("DualReductions", 0)
+            env.start()
+            with gp.Model(env=env, name="portfolio") as model:
+                w = model.addMVar(n, lb=0, name="w")
+                portfolio_return = mu @ w
+                portfolio_variance = w @ Sigma @ w
+
+                # Enhanced Objective Function
+                model.setObjective(portfolio_return - (gamma / 2) * portfolio_variance, gp.GRB.MAXIMIZE)
+
+                # Add Constraints
+                model.addConstr(w.sum() == 1, "budget")
+                model.addConstr(w >= 0.01, "min_weight")
+                model.addConstr(w <= 0.3, "max_weight")
+
+                model.optimize()
+
+                if model.status == gp.GRB.OPTIMAL or model.status == gp.GRB.SUBOPTIMAL:
+                    solution = [var.X for var in model.getVars()]
+                    return solution
+                else:
+                    return np.zeros(n)
 
     def calculate_portfolio_returns(self):
         # Ensure weights are calculated
